@@ -44,9 +44,9 @@ with open(path + '/user/s400_backup.csv', 'r') as csv_file:
     csv_reader = csv.reader(csv_file, delimiter=';')
     for row in csv_reader:
         if str(row[0]) in ["failed", "to_import"]:
-            mitdatetime = int(row[1])
+            s400_datetime = int(row[1])
             weight = float(row[2])
-            s400impedance = float(row[3])
+            s400_impedance = float(row[3])
             break
 
 # Matching Garmin Connect account to weight
@@ -58,7 +58,7 @@ for user in users:
 
 # Calcuating body metrics
 if selected_user is not None and 'email@email.com' not in selected_user.email:
-    lib = Xiaomi_Scale_Body_Metrics.bodyMetrics(weight, selected_user.height, selected_user.age, selected_user.sex, int(s400impedance))
+    lib = Xiaomi_Scale_Body_Metrics.bodyMetrics(weight, selected_user.height, selected_user.age, selected_user.sex, int(s400_impedance))
     bmi = lib.getBMI()
     percent_fat = lib.getFatPercentage()
     muscle_mass = lib.getMuscleMass()
@@ -70,9 +70,9 @@ if selected_user is not None and 'email@email.com' not in selected_user.email:
     basal_met = lib.getBMR()
 
     # Print to temp.log file
-    formatted_time = dt.fromtimestamp(mitdatetime).strftime("%d.%m.%Y;%H:%M")
-    print(f"S400 * Import data: {mitdatetime};{weight:.1f};{s400impedance:.0f}")
-    print(f"S400 * Calculated data: {formatted_time};{weight:.1f};{bmi:.1f};{percent_fat:.1f};{muscle_mass:.1f};{bone_mass:.1f};{percent_hydration:.1f};{physique_rating:.0f};{visceral_fat_rating:.0f};{metabolic_age:.0f};{basal_met:.0f};{lib.getLBMCoefficient():.1f};{lib.getIdealWeight():.1f};{lib.getFatMassToIdeal()};{lib.getProteinPercentage():.1f};{s400impedance:.0f};{selected_user.email};{dt.now().strftime('%d.%m.%Y;%H:%M')}")
+    formatted_time = dt.fromtimestamp(s400_datetime).strftime("%d.%m.%Y;%H:%M")
+    print(f"S400 * Import data: {s400_datetime};{weight:.1f};{s400_impedance:.0f}")
+    print(f"S400 * Calculated data: {formatted_time};{weight:.1f};{bmi:.1f};{percent_fat:.1f};{muscle_mass:.1f};{bone_mass:.1f};{percent_hydration:.1f};{physique_rating:.0f};{visceral_fat_rating:.0f};{metabolic_age:.0f};{basal_met:.0f};{lib.getLBMCoefficient():.1f};{lib.getIdealWeight():.1f};{lib.getFatMassToIdeal()};{lib.getProteinPercentage():.1f};{s400_impedance:.0f};{selected_user.email};{dt.now().strftime('%d.%m.%Y;%H:%M')}")
 
     # Login to Garmin Connect
     with open(path + '/user/' + selected_user.email, 'r') as token_file:
@@ -81,10 +81,10 @@ if selected_user is not None and 'email@email.com' not in selected_user.email:
         garmin.login(tokenstore)
 
         # Upload data to Garmin Connect
-        garmin.add_body_composition(dt.fromtimestamp(mitdatetime).isoformat(),weight=weight,bmi=bmi,percent_fat=percent_fat,muscle_mass=muscle_mass,bone_mass=bone_mass,percent_hydration=percent_hydration,physique_rating=physique_rating,visceral_fat_rating=visceral_fat_rating,metabolic_age=metabolic_age,basal_met=basal_met)
+        garmin.add_body_composition(dt.fromtimestamp(s400_datetime).isoformat(),weight=weight,bmi=bmi,percent_fat=percent_fat,muscle_mass=muscle_mass,bone_mass=bone_mass,percent_hydration=percent_hydration,physique_rating=physique_rating,visceral_fat_rating=visceral_fat_rating,metabolic_age=metabolic_age,basal_met=basal_met)
         print("S400 * Upload status: OK")
 else:
 
     # Print to temp.log file
-    print(f"S400 * Import data: {mitdatetime};{weight:.1f};{s400impedance:.0f}")
+    print(f"S400 * Import data: {s400_datetime};{weight:.1f};{s400_impedance:.0f}")
     print("S400 * There is no user with given weight or undefined user email@email.com, check users section in export2garmin.cfg")
