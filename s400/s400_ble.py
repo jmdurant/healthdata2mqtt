@@ -17,17 +17,17 @@ path = os.path.dirname(os.path.dirname(__file__))
 with open(path + '/user/export2garmin.cfg', 'r') as file:
     for line in file:
         line = line.strip()
-        if line.startswith('s400_'):
+        if line.startswith('s400_ble_'):
             name, value = line.split('=')
             globals()[name.strip()] = value.strip()
 
 # Reading data from a scale using a BLE adapter
-ble_token = bytes.fromhex(s400_token)
+ble_token = bytes.fromhex(s400_ble_token)
 parser = XiaomiBluetoothDeviceData(bindkey=ble_token)
 stop_event = asyncio.Event()
 
 def detection_callback(device,advertisement_data):
-    if device.address.upper() != s400_mac:
+    if device.address.upper() != s400_ble_mac:
         return
     print(f"BLE device found with address: {device.address.upper()} <= target device")
 
