@@ -43,7 +43,7 @@ def detection_callback(device,advertisement_data):
     if not update or not update.entity_values:
         return
 
-    fields = {"Mass","Impedance","Impedance Low","Heart Rate"}
+    fields = {'Mass','Impedance','Impedance Low','Heart Rate'}
     values = {v.name: v.native_value for v in update.entity_values.values() if v.name in fields}
 
     if fields <= values.keys():
