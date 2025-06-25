@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Health Data Integration - OpenEMR</title>
+    <style>
+        .health-widget {
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            background: #f9f9f9;
+        }
+        .metric {
+            display: inline-block;
+            margin: 5px 10px;
+            padding: 5px;
+            background: white;
+            border-radius: 3px;
+            border: 1px solid #eee;
+        }
+        .error { color: red; }
+        .success { color: green; }
+        .timestamp { font-size: 0.8em; color: #666; }
+    </style>
+</head>
+<body>
+
+<!-- Enhanced Health Data Widget for OpenEMR -->
+<div class="health-widget">
+    <h3>📊 Latest Health Data</h3>
+    
+    <!-- User Selection -->
+    <select id="user-select">
+        <option value="">Select Patient...</option>
+        <option value="user1@example.com">John Doe (user1@example.com)</option>
+        <option value="user2@example.com">Jane Smith (user2@example.com)</option>
+    </select>
+    
+    <button id="refresh-data">🔄 Refresh Health Data</button>
+    <button id="refresh-weight-only">⚖️ Get Weight Only</button>
+    
+    <!-- Status Display -->
+    <div id="status"></div>
+    
+    <!-- Body Composition Data -->
+    <div id="body-composition" style="display:none;">
+        <h4>📈 Body Composition</h4>
+        <div class="metric">Weight: <span id="weight">--</span> kg</div>
+        <div class="metric">BMI: <span id="bmi">--</span></div>
+        <div class="metric">Body Fat: <span id="body-fat">--</span>%</div>
+        <div class="metric">Muscle Mass: <span id="muscle-mass">--</span> kg</div>
+        <div class="metric">Water: <span id="water">--</span>%</div>
+        <div class="timestamp">Last updated: <span id="bc-timestamp">--</span></div>
+    </div>
+    
+    <!-- Blood Pressure Data -->
+    <div id="blood-pressure" style="display:none;">
+        <h4>🩺 Blood Pressure</h4>
+        <div class="metric">Systolic: <span id="systolic">--</span> mmHg</div>
+        <div class="metric">Diastolic: <span id="diastolic">--</span> mmHg</div>
+        <div class="metric">Pulse: <span id="pulse">--</span> bpm</div>
+        <div class="metric">Category: <span id="bp-category">--</span></div>
+        <div class="timestamp">Last updated: <span id="bp-timestamp">--</span></div>
+    </div>
+</div>
+
+<script>
+// Configuration - Update this URL to point to your Health Data API
+const API_BASE_URL = 'http://localhost:5001';  // Change for production
+
+// Utility function to format timestamps
+function formatTimestamp(isoString) {
+    if (!isoString) return '--';
+    return new Date(isoString).toLocaleString();
+}
+
+// Show status message
+function showStatus(message, isError = false) {
+    const statusDiv = document.getElementById('status');
+    statusDiv.innerHTML = `<div class="${isError ? 'error' : 'success'}">${message}</div>`;
+    setTimeout(() => statusDiv.innerHTML = '', 5000);
+}
+
+// Populate OpenEMR form fields (customize field IDs for your OpenEMR installation)
+function populateOpenEMRFields(data) {
+    // Body Composition Fields - Update these IDs to match your OpenEMR form
+    if (data.body_composition) {
+        const bc = data.body_composition.data;
+        
+        // Common OpenEMR field mappings (customize these)
+        const fieldMappings = {
+            'weight': '#weight_field',           // Replace with actual field ID
+            'bmi': '#bmi_field',
+            'systolic': '#bp_systolic_field',
+            'diastolic': '#bp_diastolic_field',
+            'pulse': '#pulse_field'
+        };
+        
+        // Update fields if they exist
+        if (bc.weight && document.querySelector(fieldMappings.weight)) {
+            document.querySelector(fieldMappings.weight).value = bc.weight;
+        }
+        if (bc.bmi && document.querySelector(fieldMappings.bmi)) {
+            document.querySelector(fieldMappings.bmi).value = Math.round(bc.bmi * 10) / 10;
+        }
+    }
+    
+    // Blood Pressure Fields
+    if (data.blood_pressure) {
+        const bp = data.blood_pressure.data;
+        
+        if (bp.systolic && document.querySelector(fieldMappings.systolic)) {
+            document.querySelector(fieldMappings.systolic).value = bp.systolic;
+        }
+        if (bp.diastolic && document.querySelector(fieldMappings.diastolic)) {
+            document.querySelector(fieldMappings.diastolic).value = bp.diastolic;
+        }
+        if (bp.pulse && document.querySelector(fieldMappings.pulse)) {
+            document.querySelector(fieldMappings.pulse).value = bp.pulse;
+        }
+    }
+    
+    showStatus('✅ Data imported to form fields');
+}
+
+// Update display with health data
+function updateDisplay(data) {
+    // Body Composition
+    if (data.body_composition) {
+        const bc = data.body_composition.data;
+        document.getElementById('weight').textContent = bc.weight || '--';
+        document.getElementById('bmi').textContent = bc.bmi ? Math.round(bc.bmi * 10) / 10 : '--';
+        document.getElementById('body-fat').textContent = bc.body_fat_percent ? Math.round(bc.body_fat_percent * 10) / 10 : '--';
+        document.getElementById('muscle-mass').textContent = bc.muscle_mass ? Math.round(bc.muscle_mass * 10) / 10 : '--';
+        document.getElementById('water').textContent = bc.water_percent ? Math.round(bc.water_percent * 10) / 10 : '--';
+        document.getElementById('bc-timestamp').textContent = formatTimestamp(data.body_composition.timestamp);
+        document.getElementById('body-composition').style.display = 'block';
+    }
+    
+    // Blood Pressure
+    if (data.blood_pressure) {
+        const bp = data.blood_pressure.data;
+        document.getElementById('systolic').textContent = bp.systolic || '--';
+        document.getElementById('diastolic').textContent = bp.diastolic || '--';
+        document.getElementById('pulse').textContent = bp.pulse || '--';
+        document.getElementById('bp-category').textContent = bp.category || '--';
+        document.getElementById('bp-timestamp').textContent = formatTimestamp(data.blood_pressure.timestamp);
+        document.getElementById('blood-pressure').style.display = 'block';
+    }
+    
+    // Auto-populate OpenEMR fields
+    populateOpenEMRFields(data);
+}
+
+// Fetch all health data for user
+function refreshHealthData() {
+    const userEmail = document.getElementById('user-select').value;
+    if (!userEmail) {
+        showStatus('Please select a patient first', true);
+        return;
+    }
+    
+    showStatus('🔄 Fetching health data...');
+    
+    fetch(`${API_BASE_URL}/user/${encodeURIComponent(userEmail)}/latest`)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            updateDisplay(data);
+            showStatus('✅ Health data refreshed successfully');
+        })
+        .catch(error => {
+            showStatus(`❌ Error: ${error.message}`, true);
+            console.error('Error fetching health data:', error);
+        });
+}
+
+// Fetch just weight (compatible with original snippet)
+function refreshWeightOnly() {
+    const userEmail = document.getElementById('user-select').value;
+    if (!userEmail) {
+        showStatus('Please select a patient first', true);
+        return;
+    }
+    
+    showStatus('🔄 Fetching weight...');
+    
+    fetch(`${API_BASE_URL}/weight/${encodeURIComponent(userEmail)}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.weight) {
+                document.getElementById('weight').textContent = data.weight;
+                
+                // Update OpenEMR weight field if it exists
+                const weightField = document.querySelector('#weight_field'); // Update with actual field ID
+                if (weightField) {
+                    weightField.value = data.weight;
+                    showStatus('✅ Weight imported to form');
+                } else {
+                    showStatus('✅ Weight retrieved (no form field found)');
+                }
+            } else {
+                showStatus('❌ No weight data found', true);
+            }
+        })
+        .catch(error => {
+            showStatus(`❌ Error: ${error.message}`, true);
+            console.error('Error fetching weight:', error);
+        });
+}
+
+// Event listeners
+document.getElementById('refresh-data').addEventListener('click', refreshHealthData);
+document.getElementById('refresh-weight-only').addEventListener('click', refreshWeightOnly);
+
+// Auto-refresh data when user is selected
+document.getElementById('user-select').addEventListener('change', function() {
+    if (this.value) {
+        refreshHealthData();
+    }
+});
+
+// Check API health on load
+fetch(`${API_BASE_URL}/health`)
+    .then(response => response.json())
+    .then(data => {
+        showStatus(`✅ Connected to Health Data API (${data.data_points} data points available)`);
+    })
+    .catch(error => {
+        showStatus(`❌ Cannot connect to Health Data API at ${API_BASE_URL}`, true);
+    });
+
+</script>
+
+</body>
+</html>
