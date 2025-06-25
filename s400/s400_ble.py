@@ -12,16 +12,23 @@ Export 2 Garmin Connect v3.0 (s400_ble.py)
 =============================================
 """)
 
-BINDKEY = bytes.fromhex("adddba28d5c05f005fe21677b5a58e1e")
-TARGET_MAC = "1C:EA:AC:5D:A7:B0"
+# Importing bluetooth variables from a file
+path = os.path.dirname(os.path.dirname(__file__))
+with open(path + '/user/export2garmin.cfg', 'r') as file:
+    for line in file:
+        line = line.strip()
+        if line.startswith('s400_'):
+            name, value = line.split('=')
+            globals()[name.strip()] = value.strip()
 
-parser = XiaomiBluetoothDeviceData(bindkey=BINDKEY)
+# Reading data from a scale using a BLE adapter
+ble_token = bytes.fromhex(s400_token)
+parser = XiaomiBluetoothDeviceData(bindkey=ble_token)
 stop_event = asyncio.Event()
 
-def detection_callback(device, advertisement_data):
-    if device.address.upper() != TARGET_MAC:
+def detection_callback(device,advertisement_data):
+    if device.address.upper() != s400_mac:
         return
-
     print(f"BLE device found with address: {device.address.upper()} <= target device")
 
     service_data = advertisement_data.service_data.get("0000fe95-0000-1000-8000-00805f9b34fb")
@@ -36,7 +43,7 @@ def detection_callback(device, advertisement_data):
     if not update or not update.entity_values:
         return
 
-    fields = {"Mass", "Impedance", "Impedance Low", "Heart Rate"}
+    fields = {"Mass","Impedance","Impedance Low","Heart Rate"}
     values = {v.name: v.native_value for v in update.entity_values.values() if v.name in fields}
 
     if fields <= values.keys():
@@ -51,5 +58,6 @@ async def main():
     await stop_event.wait()
     await scanner.stop()
 
+# Main program loop
 if __name__ == "__main__":
     asyncio.run(main())
