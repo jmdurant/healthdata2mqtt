@@ -8,7 +8,7 @@ from bluepy import btle
 # Version info
 print("""
 =============================================
-Export 2 Garmin Connect v2.2 (miscale_ble.py)
+Export 2 Garmin Connect v3.0 (miscale_ble.py)
 =============================================
 """)
 
@@ -17,7 +17,7 @@ path = os.path.dirname(os.path.dirname(__file__))
 with open(path + '/user/export2garmin.cfg', 'r') as file:
     for line in file:
         line = line.strip()
-        if line.startswith('ble_'):
+        if line.startswith('ble_') or line.startswith('switch_'):
             name, value = line.split('=')
             globals()[name.strip()] = value.strip()
 
@@ -34,26 +34,33 @@ class miScale(btle.DefaultDelegate):
             self.unique_dev_addresses.append(dev.addr)
             print(f"  BLE device found with address: {dev.addr}" + (" <= target device" if dev.addr == self.address else ", non-target device"))
         if dev.addr == self.address:
-            for (adType, desc, value) in dev.getScanData():
-                if adType == 22:
-                    data = bytes.fromhex(value[4:])
-                    ctrlByte1 = data[1]
-                    hasImpedance = ctrlByte1 & (1<<1)
-                    if hasImpedance:
+            if switch_s400 == 'on':
+                print(f"{dt.now().strftime('%d.%m.%Y-%H:%M:%S')} S400 * BLE scan test completed successfully")
+                exit()
+            elif switch_omron == 'on':
+                print(f"{dt.now().strftime('%d.%m.%Y-%H:%M:%S')} OMRON * BLE scan test completed successfully")
+                exit()
+            else:
+                for (adType, desc, value) in dev.getScanData():
+                    if adType == 22:
+                        data = bytes.fromhex(value[4:])
+                        ctrlByte1 = data[1]
+                        hasImpedance = ctrlByte1 & (1<<1)
+                        if hasImpedance:
 
-                        # lbs to kg unit conversion
-                        if value[4:6] == '03':
-                            lb_weight = int((value[28:30] + value[26:28]), 16) * 0.01
-                            weight = round(lb_weight / 2.2046, 1)
+                            # lbs to kg unit conversion
+                            if value[4:6] == '03':
+                                lb_weight = int((value[28:30] + value[26:28]), 16) * 0.01
+                                weight = round(lb_weight / 2.2046, 1)
+                            else:
+                                weight = (((data[12] & 0xFF) << 8) | (data[11] & 0xFF)) * 0.005
+                            impedance = ((data[10] & 0xFF) << 8) | (data[9] & 0xFF)
+                            unix_time = int(dt.timestamp(dt.strptime(f"{int((data[3] << 8) | data[2])},{int(data[4])},{int(data[5])},{int(data[6])},{int(data[7])},{int(data[8])}","%Y,%m,%d,%H,%M,%S")))
+                            print(f"{dt.now().strftime('%d.%m.%Y-%H:%M:%S')} * Reading BLE data complete, finished BLE scan")
+                            print(f"{unix_time};{weight:.1f};{impedance:.0f}")
                         else:
-                            weight = (((data[12] & 0xFF) << 8) | (data[11] & 0xFF)) * 0.005
-                        impedance = ((data[10] & 0xFF) << 8) | (data[9] & 0xFF)
-                        unix_time = int(dt.timestamp(dt.strptime(f"{int((data[3] << 8) | data[2])},{int(data[4])},{int(data[5])},{int(data[6])},{int(data[7])},{int(data[8])}","%Y,%m,%d,%H,%M,%S")))
-                        print(f"{dt.now().strftime('%d.%m.%Y-%H:%M:%S')} * Reading BLE data complete, finished BLE scan")
-                        print(f"{unix_time};{weight:.1f};{impedance:.0f}")
-                    else:
-                        print(f"{dt.now().strftime('%d.%m.%Y-%H:%M:%S')} * Reading BLE data incomplete, finished BLE scan")
-                    exit()
+                            print(f"{dt.now().strftime('%d.%m.%Y-%H:%M:%S')} * Reading BLE data incomplete, finished BLE scan")
+                        exit()
     def run(self):
 
         # Verifying correct working of BLE adapter, max 3 times

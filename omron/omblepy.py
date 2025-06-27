@@ -2,7 +2,7 @@
 
 # Version info
 # ================================================
-# Export 2 Garmin Connect v2.5 (omblepy.py)
+# Export 2 Garmin Connect v3.0 (omblepy.py)
 # ================================================
 
 import asyncio                                                      #avoid wait on bluetooth stack stalling the application
