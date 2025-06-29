@@ -56,13 +56,13 @@ class miScale(btle.DefaultDelegate):
                                 weight = (((data[12] & 0xFF) << 8) | (data[11] & 0xFF)) * 0.005
                             impedance = ((data[10] & 0xFF) << 8) | (data[9] & 0xFF)
                             unix_time = int(dt.timestamp(dt.strptime(f"{int((data[3] << 8) | data[2])},{int(data[4])},{int(data[5])},{int(data[6])},{int(data[7])},{int(data[8])}","%Y,%m,%d,%H,%M,%S")))
-                            print(f"{dt.now().strftime('%d.%m.%Y-%H:%M:%S')} * Reading BLE data complete, finished BLE scan")
+                            print(f"{dt.now().strftime('%d.%m.%Y-%H:%M:%S')} MISCALE * Reading BLE data complete, finished BLE scan")
                             print(f"{unix_time};{weight:.1f};{impedance:.0f}")
                         else:
-                            print(f"{dt.now().strftime('%d.%m.%Y-%H:%M:%S')} * Reading BLE data incomplete, finished BLE scan")
+                            print(f"{dt.now().strftime('%d.%m.%Y-%H:%M:%S')} MISCALE * Reading BLE data incomplete, finished BLE scan")
                         exit()
-    def run(self):
 
+    def run(self):
         # Verifying correct working of BLE adapter, max 3 times
         print(f"{dt.now().strftime('%d.%m.%Y-%H:%M:%S')} * Checking if a BLE adapter is detected")
         ble_error = 0
@@ -83,7 +83,6 @@ class miScale(btle.DefaultDelegate):
                     ble_adapter_hci_read = ble_adapter_hci
                     ble_adapter_mac_read = os.popen(f"hcitool dev | awk '/hci{ble_adapter_hci}/ {{print $2}}'").read().strip()
                     ble_success = True
-
             if ble_success == False:
                 os.system("sudo modprobe btusb >/dev/null 2>&1")
                 time.sleep(1)
@@ -92,7 +91,6 @@ class miScale(btle.DefaultDelegate):
             else:
                 print(f"{dt.now().strftime('%d.%m.%Y-%H:%M:%S')} * BLE adapter hci{ble_adapter_hci_read}({ble_adapter_mac_read}) detected, check BLE adapter connection")
                 break
-
         if ble_error == 3 and not ble_success:
             if ble_adapter_switch == "on":
                 print(f"{dt.now().strftime('%d.%m.%Y-%H:%M:%S')} * BLE adapter {ble_adapter_mac} failed to be found, not detected by {ble_error} attempts")
@@ -125,7 +123,7 @@ class miScale(btle.DefaultDelegate):
             print(f"{dt.now().strftime('%d.%m.%Y-%H:%M:%S')} * Finished BLE scan")
             return
 
-        # Scanning for BLE devices in range
+        # Scanning for BLE devices in range, default 7 times
         dev_around = 0
         while ble_success and con_success:
             scanner.start()

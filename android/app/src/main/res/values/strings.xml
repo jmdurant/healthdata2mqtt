@@ -1,0 +1,16 @@
+<resources>
+    <string name="app_name">Health Data MQTT</string>
+    <string name="bluetooth_scanning">Bluetooth Scanning</string>
+    <string name="mqtt_status">MQTT Status</string>
+    <string name="settings">Settings</string>
+    <string name="test_connection">Test Connection</string>
+    <string name="scanning">Scanning...</string>
+    <string name="not_scanning">Not scanning</string>
+    <string name="devices_found">Devices found: %d</string>
+    <string name="broker_not_connected">Broker: Not connected</string>
+    <string name="last_message_never">Last message: Never</string>
+    <string name="bluetooth_required">Bluetooth is required for this app</string>
+    <string name="bluetooth_enabled">Bluetooth enabled!</string>
+    <string name="all_permissions_granted">All permissions granted!</string>
+    <string name="permissions_denied">Some permissions denied. App may not work properly.</string>
+</resources>

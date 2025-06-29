@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<data-extraction-rules>
+    <cloud-backup>
+        <!-- Exclude shared preferences that contain sensitive data -->
+        <exclude domain="sharedpref" path="health_data_mqtt_prefs.xml"/>
+    </cloud-backup>
+    <device-transfer>
+        <!-- Exclude shared preferences that contain sensitive data -->
+        <exclude domain="sharedpref" path="health_data_mqtt_prefs.xml"/>
+    </device-transfer>
+</data-extraction-rules>

@@ -1,0 +1,19 @@
+{
+    "logs": [
+        {
+            "outputFile": "com.healthdata.mqtt.app-mergeDebugResources-70:/values-ldltr-v21/values-ldltr-v21.xml",
+            "map": [
+                {
+                    "source": "/home/docto/.gradle/caches/8.9/transforms/b561199a4aab0d57fddbccbdef25e1e5/transformed/appcompat-1.1.0/res/values-ldltr-v21/values-ldltr-v21.xml",
+                    "from": {
+                        "startLines": "2",
+                        "startColumns": "4",
+                        "startOffsets": "55",
+                        "endColumns": "112",
+                        "endOffsets": "163"
+                    }
+                }
+            ]
+        }
+    ]
+}

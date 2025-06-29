@@ -1,0 +1,23 @@
+R_DEF: Internal format may change without notice
+local
+drawable ic_launcher_background
+drawable ic_launcher_foreground
+mipmap ic_launcher
+mipmap ic_launcher_round
+string all_permissions_granted
+string app_name
+string bluetooth_enabled
+string bluetooth_required
+string bluetooth_scanning
+string broker_not_connected
+string devices_found
+string last_message_never
+string mqtt_status
+string not_scanning
+string permissions_denied
+string scanning
+string settings
+string test_connection
+style Theme.HealthDataMQTT
+xml backup_rules
+xml data_extraction_rules
