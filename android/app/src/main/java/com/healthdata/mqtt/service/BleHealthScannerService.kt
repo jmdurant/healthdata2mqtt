@@ -50,7 +50,12 @@ class BleHealthScannerService : Service() {
     // Known device UUIDs for health devices
     companion object {
         private val MI_SCALE_SERVICE_UUID = UUID.fromString("0000181B-0000-1000-8000-00805F9B34FB") // Body Composition Service
-        private val OMRON_BP_SERVICE_UUID = UUID.fromString("0000180F-0000-1000-8000-00805F9B34FB") // Battery Service (common in BP monitors)
+        
+        // Omron Blood Pressure UUIDs
+        private val BLOOD_PRESSURE_SERVICE_UUID = UUID.fromString("00001810-0000-1000-8000-00805F9B34FB") // Blood Pressure Service
+        private val BLOOD_PRESSURE_MEASUREMENT_UUID = UUID.fromString("00002A35-0000-1000-8000-00805F9B34FB") // Blood Pressure Measurement
+        private val INTERMEDIATE_CUFF_PRESSURE_UUID = UUID.fromString("00002A36-0000-1000-8000-00805F9B34FB") // Intermediate Cuff Pressure
+        private val BLOOD_PRESSURE_FEATURE_UUID = UUID.fromString("00002A49-0000-1000-8000-00805F9B34FB") // Blood Pressure Feature
         
         // FT95 Thermometer UUIDs
         private val HEALTH_THERMOMETER_SERVICE_UUID = UUID.fromString("00001809-0000-1000-8000-00805F9B34FB") // Health Thermometer Service
@@ -228,6 +233,10 @@ class BleHealthScannerService : Service() {
             ScanFilter.Builder()
                 .setServiceUuid(ParcelUuid(MI_SCALE_SERVICE_UUID))
                 .build(),
+            // Filter for Omron Blood Pressure (Blood Pressure Service)
+            ScanFilter.Builder()
+                .setServiceUuid(ParcelUuid(BLOOD_PRESSURE_SERVICE_UUID))
+                .build(),
             // Filter for FT95 Thermometer (Health Thermometer Service)
             ScanFilter.Builder()
                 .setServiceUuid(ParcelUuid(HEALTH_THERMOMETER_SERVICE_UUID))
@@ -326,7 +335,7 @@ class BleHealthScannerService : Service() {
             return uuids.any { parcelUuid ->
                 val uuid = parcelUuid.uuid
                 uuid == MI_SCALE_SERVICE_UUID || 
-                uuid == OMRON_BP_SERVICE_UUID ||
+                uuid == BLOOD_PRESSURE_SERVICE_UUID ||
                 uuid == HEALTH_THERMOMETER_SERVICE_UUID ||
                 uuid == DEVICE_INFORMATION_SERVICE
             }
@@ -385,6 +394,9 @@ class BleHealthScannerService : Service() {
                         MI_SCALE_SERVICE_UUID -> {
                             handleMiScaleService(gatt, service)
                         }
+                        BLOOD_PRESSURE_SERVICE_UUID -> {
+                            handleBloodPressureService(gatt, service)
+                        }
                         HEALTH_THERMOMETER_SERVICE_UUID -> {
                             handleHealthThermometerService(gatt, service)
                         }
@@ -402,6 +414,12 @@ class BleHealthScannerService : Service() {
             when (characteristic.uuid) {
                 MI_SCALE_MEASUREMENT_UUID -> {
                     processMiScaleData(gatt.device.address, characteristic.value)
+                }
+                BLOOD_PRESSURE_MEASUREMENT_UUID -> {
+                    processBloodPressureData(gatt.device.address, gatt.device.name, characteristic.value)
+                }
+                INTERMEDIATE_CUFF_PRESSURE_UUID -> {
+                    processBloodPressureData(gatt.device.address, gatt.device.name, characteristic.value)
                 }
                 TEMPERATURE_MEASUREMENT_UUID -> {
                     processTemperatureData(gatt.device.address, gatt.device.name, characteristic.value)
@@ -598,6 +616,134 @@ class BleHealthScannerService : Service() {
         }
         
         return signedMantissa * Math.pow(10.0, exponent.toDouble())
+    }
+    
+    private fun handleBloodPressureService(gatt: BluetoothGatt, service: BluetoothGattService) {
+        Log.i(TAG, "OMRON * Setting up Blood Pressure Service for device: ${gatt.device.address}")
+        
+        // Try to find the Blood Pressure Measurement characteristic
+        val bpMeasurementChar = service.getCharacteristic(BLOOD_PRESSURE_MEASUREMENT_UUID)
+        if (bpMeasurementChar != null) {
+            try {
+                Log.d(TAG, "OMRON * Found Blood Pressure Measurement characteristic, enabling notifications...")
+                // Enable notifications for blood pressure measurements
+                gatt.setCharacteristicNotification(bpMeasurementChar, true)
+                
+                // Set the notification descriptor
+                val descriptor = bpMeasurementChar.getDescriptor(CCCD_UUID)
+                descriptor?.let {
+                    it.value = BluetoothGattDescriptor.ENABLE_INDICATION_VALUE // BP uses indications
+                    gatt.writeDescriptor(it)
+                    Log.d(TAG, "OMRON * Blood pressure measurement notifications enabled")
+                }
+            } catch (e: SecurityException) {
+                Log.e(TAG, "Permission denied for blood pressure characteristic notification", e)
+            }
+        } else {
+            Log.w(TAG, "OMRON * Blood Pressure Measurement characteristic not found")
+        }
+        
+        // Also try to find the Intermediate Cuff Pressure characteristic (optional)
+        val intermediateCuffChar = service.getCharacteristic(INTERMEDIATE_CUFF_PRESSURE_UUID)
+        if (intermediateCuffChar != null) {
+            try {
+                Log.d(TAG, "OMRON * Found Intermediate Cuff Pressure characteristic, enabling notifications...")
+                gatt.setCharacteristicNotification(intermediateCuffChar, true)
+                
+                val descriptor = intermediateCuffChar.getDescriptor(CCCD_UUID)
+                descriptor?.let {
+                    it.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                    gatt.writeDescriptor(it)
+                    Log.d(TAG, "OMRON * Intermediate cuff pressure notifications enabled")
+                }
+            } catch (e: SecurityException) {
+                Log.e(TAG, "Permission denied for intermediate cuff pressure characteristic notification", e)
+            }
+        }
+    }
+    
+    private fun processBloodPressureData(deviceAddress: String, deviceName: String?, data: ByteArray) {
+        try {
+            Log.d(TAG, "OMRON * Processing blood pressure data from $deviceAddress (${data.size} bytes)")
+            
+            if (data.isEmpty()) {
+                Log.w(TAG, "OMRON * Empty blood pressure data received")
+                return
+            }
+            
+            // Parse the blood pressure measurement data according to Bluetooth SIG specification
+            // Blood Pressure Measurement characteristic format:
+            // Flags (1 byte) + Systolic (IEEE-11073 SFLOAT) + Diastolic (IEEE-11073 SFLOAT) + MAP (IEEE-11073 SFLOAT) + optional fields
+            
+            val flags = data[0].toInt() and 0xFF
+            Log.d(TAG, "OMRON * Blood pressure measurement flags: 0x${flags.toString(16).uppercase()}")
+            
+            // Check blood pressure unit (bit 0 of flags) - 0 = mmHg, 1 = kPa
+            val unitKPa = (flags and 0x01) != 0
+            val unit = if (unitKPa) "kPa" else "mmHg"
+            
+            // Check if timestamp is present (bit 1 of flags)
+            val timestampPresent = (flags and 0x02) != 0
+            
+            // Check if pulse rate is present (bit 2 of flags)
+            val pulseRatePresent = (flags and 0x04) != 0
+            
+            if (data.size < 7) {
+                Log.w(TAG, "OMRON * Blood pressure data too short (${data.size} bytes)")
+                return
+            }
+            
+            // Parse blood pressure values (IEEE-11073 16-bit SFLOAT format)
+            val systolic = parseIEEE11073SFloat(data, 1)
+            val diastolic = parseIEEE11073SFloat(data, 3)
+            val meanArterialPressure = parseIEEE11073SFloat(data, 5)
+            
+            Log.i(TAG, "OMRON * Blood pressure reading complete: ${systolic}/${diastolic} $unit (MAP: $meanArterialPressure)")
+            
+            // Convert to mmHg if needed (most common unit)
+            val systolicMmHg = if (unitKPa) systolic * 7.50062 else systolic
+            val diastolicMmHg = if (unitKPa) diastolic * 7.50062 else diastolic
+            
+            // Create blood pressure reading (you would need to create this data class)
+            // For now, just log and publish raw data
+            Log.i(TAG, "OMRON * BP: ${systolicMmHg.toInt()}/${diastolicMmHg.toInt()} mmHg from ${deviceName ?: "Unknown"}")
+            
+            // TODO: Create BloodPressureReading data class and MQTT publishing
+            // val bpReading = BloodPressureReading(systolicMmHg, diastolicMmHg, meanArterialPressure, Date(), deviceAddress, deviceName)
+            // mqttPublisher.publishBloodPressureReading(userEmail, bpReading)
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "OMRON * Error processing blood pressure data", e)
+        }
+    }
+    
+    private fun parseIEEE11073SFloat(data: ByteArray, offset: Int): Double {
+        if (data.size < offset + 2) {
+            throw IllegalArgumentException("Insufficient data for IEEE-11073 SFLOAT")
+        }
+        
+        // IEEE-11073 16-bit SFLOAT format:
+        // Mantissa (12 bits) + Exponent (4 bits)
+        val value = (data[offset].toInt() and 0xFF) or ((data[offset + 1].toInt() and 0xFF) shl 8)
+        
+        val mantissa = value and 0x0FFF
+        val exponent = (value shr 12) and 0x0F
+        
+        // Convert signed mantissa (12-bit)
+        val signedMantissa = if ((mantissa and 0x0800) != 0) {
+            mantissa or 0xFFFFF000.toInt() // Sign extend
+        } else {
+            mantissa
+        }
+        
+        // Convert signed exponent (4-bit)
+        val signedExponent = if ((exponent and 0x08) != 0) {
+            exponent or 0xFFFFFFF0.toInt() // Sign extend
+        } else {
+            exponent
+        }
+        
+        return signedMantissa * Math.pow(10.0, signedExponent.toDouble())
     }
     
     private fun disconnectAllDevices() {

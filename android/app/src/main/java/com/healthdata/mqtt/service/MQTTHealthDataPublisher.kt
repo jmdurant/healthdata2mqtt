@@ -153,7 +153,62 @@ class MQTTHealthDataPublisher(
         bodyComposition: BodyComposition,
         callback: PublishCallback? = null
     ) {
-        // Implementation same as before...
+        if (!isConnected()) {
+            val errorMsg = "MQTT client not connected"
+            Log.e(TAG, errorMsg)
+            callback?.onPublishFailed("body_composition", errorMsg)
+            return
+        }
+
+        try {
+            val topic = "healthdata/${sanitizeEmailForTopic(userEmail)}/body_composition"
+            
+            val bodyData = mapOf(
+                "timestamp" to System.currentTimeMillis(),
+                "weight" to bodyComposition.weight,
+                "height" to bodyComposition.height,
+                "age" to bodyComposition.age,
+                "sex" to bodyComposition.sex.name,
+                "impedance" to bodyComposition.impedance,
+                "bmi" to bodyComposition.bmi,
+                "fat_percentage" to bodyComposition.fatPercentage,
+                "water_percentage" to bodyComposition.waterPercentage,
+                "bone_mass" to bodyComposition.boneMass,
+                "muscle_mass" to bodyComposition.muscleMass,
+                "visceral_fat" to bodyComposition.visceralFat,
+                "bmr" to bodyComposition.bmr,
+                "protein_percentage" to bodyComposition.proteinPercentage,
+                "body_type" to bodyComposition.bodyType,
+                "metabolic_age" to bodyComposition.metabolicAge,
+                "ideal_weight" to bodyComposition.idealWeight,
+                "fat_mass_to_ideal" to bodyComposition.fatMassToIdeal,
+                "data_type" to "body_composition"
+            )
+
+            val payload = gson.toJson(bodyData)
+            Log.d(TAG, "Publishing body composition to topic: $topic")
+            Log.d(TAG, "Body composition payload: $payload")
+            
+            mqttClient?.publish(
+                Mqtt3Publish.builder()
+                    .topic(topic)
+                    .payload(payload.toByteArray())
+                    .build()
+            )?.whenComplete { _, throwable ->
+                if (throwable != null) {
+                    val errorMsg = "Failed to publish body composition: ${throwable.message}"
+                    Log.e(TAG, errorMsg, throwable)
+                    callback?.onPublishFailed(topic, errorMsg)
+                } else {
+                    Log.i(TAG, "Successfully published body composition: BMI=${bodyComposition.bmi}, Weight=${bodyComposition.weight}kg")
+                    callback?.onPublishSuccess(topic)
+                }
+            }
+        } catch (e: Exception) {
+            val errorMsg = "Error publishing body composition: ${e.message}"
+            Log.e(TAG, errorMsg, e)
+            callback?.onPublishFailed("body_composition", errorMsg)
+        }
     }
     
     fun publishBloodPressure(
@@ -161,7 +216,53 @@ class MQTTHealthDataPublisher(
         bloodPressure: BloodPressureReading,
         callback: PublishCallback? = null
     ) {
-        // Implementation same as before...
+        if (!isConnected()) {
+            val errorMsg = "MQTT client not connected"
+            Log.e(TAG, errorMsg)
+            callback?.onPublishFailed("blood_pressure", errorMsg)
+            return
+        }
+
+        try {
+            val topic = "healthdata/${sanitizeEmailForTopic(userEmail)}/blood_pressure"
+            
+            val bloodPressureData = mapOf(
+                "timestamp" to bloodPressure.timestamp,
+                "date" to bloodPressure.date,
+                "time" to bloodPressure.time,
+                "systolic" to bloodPressure.systolic,
+                "diastolic" to bloodPressure.diastolic,
+                "pulse" to bloodPressure.pulse,
+                "movement_error" to bloodPressure.mov,
+                "irregular_heartbeat" to bloodPressure.ihb,
+                "category" to bloodPressure.category.toString(),
+                "data_type" to "blood_pressure_measurement"
+            )
+
+            val payload = gson.toJson(bloodPressureData)
+            Log.d(TAG, "Publishing blood pressure to topic: $topic")
+            Log.d(TAG, "Blood pressure payload: $payload")
+            
+            mqttClient?.publish(
+                Mqtt3Publish.builder()
+                    .topic(topic)
+                    .payload(payload.toByteArray())
+                    .build()
+            )?.whenComplete { _, throwable ->
+                if (throwable != null) {
+                    val errorMsg = "Failed to publish blood pressure: ${throwable.message}"
+                    Log.e(TAG, errorMsg, throwable)
+                    callback?.onPublishFailed(topic, errorMsg)
+                } else {
+                    Log.i(TAG, "Successfully published blood pressure: ${bloodPressure.systolic}/${bloodPressure.diastolic} mmHg, Pulse: ${bloodPressure.pulse} bpm")
+                    callback?.onPublishSuccess(topic)
+                }
+            }
+        } catch (e: Exception) {
+            val errorMsg = "Error publishing blood pressure: ${e.message}"
+            Log.e(TAG, errorMsg, e)
+            callback?.onPublishFailed("blood_pressure", errorMsg)
+        }
     }
     
     fun publishTemperatureReading(
@@ -225,7 +326,51 @@ class MQTTHealthDataPublisher(
         batteryPercent: Int? = null,
         callback: PublishCallback? = null
     ) {
-        // Implementation same as before...
+        if (!isConnected()) {
+            val errorMsg = "MQTT client not connected"
+            Log.e(TAG, errorMsg)
+            callback?.onPublishFailed("raw_scale_data", errorMsg)
+            return
+        }
+
+        try {
+            val topic = "healthdata/devices/${deviceMac.replace(":", "_")}/raw_scale_data"
+            
+            val rawScaleData = mutableMapOf<String, Any?>(
+                "timestamp" to System.currentTimeMillis(),
+                "device_mac" to deviceMac,
+                "weight" to weight,
+                "impedance" to impedance,
+                "data_type" to "raw_scale_measurement"
+            )
+            
+            batteryVoltage?.let { rawScaleData["battery_voltage"] = it }
+            batteryPercent?.let { rawScaleData["battery_percent"] = it }
+
+            val payload = gson.toJson(rawScaleData)
+            Log.d(TAG, "Publishing raw scale data to topic: $topic")
+            Log.d(TAG, "Raw scale data payload: $payload")
+            
+            mqttClient?.publish(
+                Mqtt3Publish.builder()
+                    .topic(topic)
+                    .payload(payload.toByteArray())
+                    .build()
+            )?.whenComplete { _, throwable ->
+                if (throwable != null) {
+                    val errorMsg = "Failed to publish raw scale data: ${throwable.message}"
+                    Log.e(TAG, errorMsg, throwable)
+                    callback?.onPublishFailed(topic, errorMsg)
+                } else {
+                    Log.i(TAG, "Successfully published raw scale data: Weight=${weight}kg, Impedance=${impedance}Ω")
+                    callback?.onPublishSuccess(topic)
+                }
+            }
+        } catch (e: Exception) {
+            val errorMsg = "Error publishing raw scale data: ${e.message}"
+            Log.e(TAG, errorMsg, e)
+            callback?.onPublishFailed("raw_scale_data", errorMsg)
+        }
     }
     
     fun publishDeviceDiscovered(
@@ -234,7 +379,48 @@ class MQTTHealthDataPublisher(
         rssi: Int,
         callback: PublishCallback? = null
     ) {
-        // Implementation same as before...
+        if (!isConnected()) {
+            val errorMsg = "MQTT client not connected"
+            Log.e(TAG, errorMsg)
+            callback?.onPublishFailed("device_discovery", errorMsg)
+            return
+        }
+
+        try {
+            val topic = "healthdata/devices/discovery"
+            
+            val discoveryData = mapOf(
+                "timestamp" to System.currentTimeMillis(),
+                "device_mac" to deviceMac,
+                "device_name" to (deviceName ?: "Unknown"),
+                "rssi" to rssi,
+                "data_type" to "device_discovery"
+            )
+
+            val payload = gson.toJson(discoveryData)
+            Log.d(TAG, "Publishing device discovery to topic: $topic")
+            Log.d(TAG, "Device discovery payload: $payload")
+            
+            mqttClient?.publish(
+                Mqtt3Publish.builder()
+                    .topic(topic)
+                    .payload(payload.toByteArray())
+                    .build()
+            )?.whenComplete { _, throwable ->
+                if (throwable != null) {
+                    val errorMsg = "Failed to publish device discovery: ${throwable.message}"
+                    Log.e(TAG, errorMsg, throwable)
+                    callback?.onPublishFailed(topic, errorMsg)
+                } else {
+                    Log.i(TAG, "Successfully published device discovery: ${deviceName ?: "Unknown"} ($deviceMac) RSSI: ${rssi}dBm")
+                    callback?.onPublishSuccess(topic)
+                }
+            }
+        } catch (e: Exception) {
+            val errorMsg = "Error publishing device discovery: ${e.message}"
+            Log.e(TAG, errorMsg, e)
+            callback?.onPublishFailed("device_discovery", errorMsg)
+        }
     }
     
     private fun sanitizeEmailForTopic(email: String): String {
