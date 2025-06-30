@@ -7,6 +7,7 @@ import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.healthdata.mqtt.data.BloodPressureReading
 import com.healthdata.mqtt.data.BodyComposition
+import com.healthdata.mqtt.data.PulseOximetryReading
 import com.healthdata.mqtt.data.TemperatureReading
 import com.hivemq.client.mqtt.MqttClient
 import com.hivemq.client.mqtt.mqtt3.Mqtt3AsyncClient
@@ -420,6 +421,62 @@ class MQTTHealthDataPublisher(
             val errorMsg = "Error publishing device discovery: ${e.message}"
             Log.e(TAG, errorMsg, e)
             callback?.onPublishFailed("device_discovery", errorMsg)
+        }
+    }
+    
+    fun publishPulseOximetryReading(
+        userEmail: String,
+        pulseOxReading: PulseOximetryReading,
+        callback: PublishCallback? = null
+    ) {
+        if (!isConnected()) {
+            val errorMsg = "MQTT client not connected"
+            Log.e(TAG, errorMsg)
+            callback?.onPublishFailed("pulse_oximetry", errorMsg)
+            return
+        }
+
+        try {
+            val topic = "healthdata/${sanitizeEmailForTopic(userEmail)}/pulse_oximetry"
+            
+            val pulseOxData = mapOf(
+                "timestamp" to dateFormat.format(pulseOxReading.timestamp),
+                "spo2_percentage" to pulseOxReading.spo2Percentage,
+                "pulse_rate" to pulseOxReading.pulseRate,
+                "signal_quality" to pulseOxReading.signalQuality.name.lowercase(),
+                "spo2_category" to pulseOxReading.getSpo2CategoryString(),
+                "pulse_rate_category" to pulseOxReading.getPulseRateCategoryString(),
+                "device_address" to pulseOxReading.deviceAddress,
+                "device_name" to pulseOxReading.deviceName,
+                "is_valid_reading" to pulseOxReading.isValidReading,
+                "plethysmogram_data_size" to pulseOxReading.plethysmogramData.size,
+                "battery_level" to pulseOxReading.batteryLevel,
+                "data_type" to "pulse_oximetry_measurement"
+            )
+
+            val payload = gson.toJson(pulseOxData)
+            Log.d(TAG, "Publishing pulse oximetry reading to topic: $topic")
+            Log.d(TAG, "Pulse oximetry payload: $payload")
+            
+            mqttClient?.publish(
+                Mqtt3Publish.builder()
+                    .topic(topic)
+                    .payload(payload.toByteArray())
+                    .build()
+            )?.whenComplete { _, throwable ->
+                if (throwable != null) {
+                    val errorMsg = "Failed to publish pulse oximetry reading: ${throwable.message}"
+                    Log.e(TAG, errorMsg, throwable)
+                    callback?.onPublishFailed(topic, errorMsg)
+                } else {
+                    Log.i(TAG, "Successfully published pulse oximetry: SpO2=${pulseOxReading.spo2Percentage}%, HR=${pulseOxReading.pulseRate} BPM")
+                    callback?.onPublishSuccess(topic)
+                }
+            }
+        } catch (e: Exception) {
+            val errorMsg = "Error publishing pulse oximetry reading: ${e.message}"
+            Log.e(TAG, errorMsg, e)
+            callback?.onPublishFailed("pulse_oximetry", errorMsg)
         }
     }
     

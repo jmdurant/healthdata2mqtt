@@ -17,6 +17,8 @@ CORS(app)  # Enable CORS for web integrations
 health_data_store = {
     'body_composition': {},  # {user_email: latest_data}
     'blood_pressure': {},    # {user_email: latest_data}
+    'temperature': {},       # {user_email: latest_data}
+    'pulse_oximetry': {},    # {user_email: latest_data}
     'raw': {}               # {device_mac: latest_data}
 }
 
@@ -37,8 +39,8 @@ def on_connect(client, userdata, flags, rc):
     if rc == 0:
         print("✓ Connected to MQTT broker")
         # Subscribe to all health topics
-        client.subscribe("health/+/+")
-        client.subscribe("health/raw/+")
+        client.subscribe("healthdata/+/+")
+        client.subscribe("healthdata/devices/+")
         print("✓ Subscribed to health topics")
     else:
         print(f"✗ Failed to connect to MQTT broker, code: {rc}")
@@ -47,35 +49,62 @@ def on_message(client, userdata, msg):
     try:
         topic_parts = msg.topic.split('/')
         
-        if len(topic_parts) >= 3 and topic_parts[0] == 'health':
+        if len(topic_parts) >= 3 and topic_parts[0] == 'healthdata':
             data = json.loads(msg.payload.decode())
             
-            if topic_parts[1] == 'body_composition':
-                user_email = data.get('user')
-                health_data_store['body_composition'][user_email] = {
-                    'timestamp': data.get('timestamp'),
-                    'received_at': datetime.now().isoformat(),
-                    'data': data.get('data', {})
-                }
-                print(f"📊 Body composition data for {user_email}")
+            # Handle user-specific health data
+            if len(topic_parts) == 3 and topic_parts[1] != 'devices':
+                user_email = topic_parts[1].replace('_at_', '@').replace('_', '.')
+                data_type = topic_parts[2]
                 
-            elif topic_parts[1] == 'blood_pressure':
-                user_email = data.get('user')
-                health_data_store['blood_pressure'][user_email] = {
-                    'timestamp': data.get('timestamp'),
-                    'received_at': datetime.now().isoformat(),
-                    'data': data.get('data', {})
-                }
-                print(f"🩺 Blood pressure data for {user_email}")
-                
-            elif topic_parts[1] == 'raw':
-                device_mac = data.get('device', topic_parts[2])
-                health_data_store['raw'][device_mac] = {
-                    'timestamp': data.get('timestamp'),
-                    'received_at': datetime.now().isoformat(),
-                    'data': data.get('data', {})
-                }
-                print(f"📱 Raw device data from {device_mac}")
+                if data_type == 'body_composition':
+                    health_data_store['body_composition'][user_email] = {
+                        'timestamp': data.get('timestamp'),
+                        'received_at': datetime.now().isoformat(),
+                        'data': data
+                    }
+                    print(f"📊 Body composition data for {user_email}: BMI={data.get('bmi')}, Weight={data.get('weight')}kg")
+                    
+                elif data_type == 'blood_pressure':
+                    health_data_store['blood_pressure'][user_email] = {
+                        'timestamp': data.get('timestamp'),
+                        'received_at': datetime.now().isoformat(),
+                        'data': data
+                    }
+                    print(f"🩺 Blood pressure data for {user_email}: {data.get('systolic')}/{data.get('diastolic')} mmHg")
+                    
+                elif data_type == 'temperature':
+                    health_data_store['temperature'][user_email] = {
+                        'timestamp': data.get('timestamp'),
+                        'received_at': datetime.now().isoformat(),
+                        'data': data
+                    }
+                    print(f"🌡️ Temperature data for {user_email}: {data.get('temperature_celsius')}°C")
+                    
+                elif data_type == 'pulse_oximetry':
+                    health_data_store['pulse_oximetry'][user_email] = {
+                        'timestamp': data.get('timestamp'),
+                        'received_at': datetime.now().isoformat(),
+                        'data': data
+                    }
+                    print(f"🫁 Pulse oximetry data for {user_email}: SpO2={data.get('spo2_percentage')}%, HR={data.get('pulse_rate')} BPM")
+                    
+            # Handle device-specific data
+            elif topic_parts[1] == 'devices':
+                if topic_parts[2] == 'discovery':
+                    device_mac = data.get('device_mac')
+                    device_name = data.get('device_name')
+                    rssi = data.get('rssi')
+                    print(f"📱 Device discovered: {device_name} ({device_mac}) RSSI: {rssi}dBm")
+                    
+                elif len(topic_parts) == 4:  # healthdata/devices/{mac}/raw_scale_data
+                    device_mac = topic_parts[2]
+                    health_data_store['raw'][device_mac] = {
+                        'timestamp': data.get('timestamp'),
+                        'received_at': datetime.now().isoformat(),
+                        'data': data
+                    }
+                    print(f"📱 Raw device data from {device_mac}: {data.get('weight')}kg, {data.get('impedance')}Ω")
                 
     except Exception as e:
         print(f"Error processing message from {msg.topic}: {e}")
@@ -121,6 +150,8 @@ def index():
             "/user/<email>/latest": "Get latest data for user",
             "/user/<email>/body_composition": "Get body composition data",
             "/user/<email>/blood_pressure": "Get blood pressure data",
+            "/user/<email>/temperature": "Get temperature data",
+            "/user/<email>/pulse_oximetry": "Get pulse oximetry data",
             "/weight/<email>": "Get just weight (OpenEMR compatible)",
             "/devices": "List raw device data"
         }
@@ -132,6 +163,8 @@ def health_check():
     data_count = (
         len(health_data_store['body_composition']) +
         len(health_data_store['blood_pressure']) +
+        len(health_data_store['temperature']) +
+        len(health_data_store['pulse_oximetry']) +
         len(health_data_store['raw'])
     )
     
@@ -141,7 +174,9 @@ def health_check():
         "data_points": data_count,
         "users": list(set(
             list(health_data_store['body_composition'].keys()) +
-            list(health_data_store['blood_pressure'].keys())
+            list(health_data_store['blood_pressure'].keys()) +
+            list(health_data_store['temperature'].keys()) +
+            list(health_data_store['pulse_oximetry'].keys())
         ))
     })
 
@@ -157,6 +192,14 @@ def list_users():
     for email in health_data_store['blood_pressure']:
         users[email] = users.get(email, {})
         users[email]['blood_pressure'] = health_data_store['blood_pressure'][email]['received_at']
+        
+    for email in health_data_store['temperature']:
+        users[email] = users.get(email, {})
+        users[email]['temperature'] = health_data_store['temperature'][email]['received_at']
+        
+    for email in health_data_store['pulse_oximetry']:
+        users[email] = users.get(email, {})
+        users[email]['pulse_oximetry'] = health_data_store['pulse_oximetry'][email]['received_at']
     
     return jsonify(users)
 
@@ -170,8 +213,15 @@ def get_user_latest(email):
     
     if email in health_data_store['blood_pressure']:
         result['blood_pressure'] = health_data_store['blood_pressure'][email]
+        
+    if email in health_data_store['temperature']:
+        result['temperature'] = health_data_store['temperature'][email]
+        
+    if email in health_data_store['pulse_oximetry']:
+        result['pulse_oximetry'] = health_data_store['pulse_oximetry'][email]
     
-    if not result.get('body_composition') and not result.get('blood_pressure'):
+    if not any([result.get('body_composition'), result.get('blood_pressure'), 
+               result.get('temperature'), result.get('pulse_oximetry')]):
         return jsonify({"error": "No data found for user"}), 404
     
     return jsonify(result)
@@ -191,6 +241,22 @@ def get_blood_pressure(email):
         return jsonify({"error": "No blood pressure data found"}), 404
     
     return jsonify(health_data_store['blood_pressure'][email])
+
+@app.route("/user/<email>/temperature")
+def get_temperature(email):
+    """Get temperature data for user"""
+    if email not in health_data_store['temperature']:
+        return jsonify({"error": "No temperature data found"}), 404
+    
+    return jsonify(health_data_store['temperature'][email])
+
+@app.route("/user/<email>/pulse_oximetry")
+def get_pulse_oximetry(email):
+    """Get pulse oximetry data for user"""
+    if email not in health_data_store['pulse_oximetry']:
+        return jsonify({"error": "No pulse oximetry data found"}), 404
+    
+    return jsonify(health_data_store['pulse_oximetry'][email])
 
 @app.route("/weight/<email>")
 def get_weight_only(email):

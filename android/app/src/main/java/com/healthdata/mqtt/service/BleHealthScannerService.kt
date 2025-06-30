@@ -64,6 +64,11 @@ class BleHealthScannerService : Service() {
         private val INTERMEDIATE_TEMPERATURE_UUID = UUID.fromString("00002A1E-0000-1000-8000-00805F9B34FB") // Intermediate Temperature (optional)
         private val MEASUREMENT_INTERVAL_UUID = UUID.fromString("00002A21-0000-1000-8000-00805F9B34FB") // Measurement Interval (optional)
         
+        // OxySmart Pulse Oximeter UUIDs (Wellue/Nordic UART service)
+        private val PULSE_OXIMETER_SERVICE_UUID = UUID.fromString("6E400001-B5A3-F393-E0A9-E50E24DCCA9E") // Nordic UART Service
+        private val PULSE_OXIMETER_TX_UUID = UUID.fromString("6E400003-B5A3-F393-E0A9-E50E24DCCA9E") // Nordic UART TX characteristic (device to phone)
+        private val PULSE_OXIMETER_RX_UUID = UUID.fromString("6E400002-B5A3-F393-E0A9-E50E24DCCA9E") // Nordic UART RX characteristic (phone to device)
+        
         // Mi Scale characteristics
         private val MI_SCALE_MEASUREMENT_UUID = UUID.fromString("00002A9C-0000-1000-8000-00805F9B34FB")
         
@@ -241,6 +246,10 @@ class BleHealthScannerService : Service() {
             ScanFilter.Builder()
                 .setServiceUuid(ParcelUuid(HEALTH_THERMOMETER_SERVICE_UUID))
                 .build(),
+            // Filter for OxySmart Pulse Oximeter (Nordic UART Service)
+            ScanFilter.Builder()
+                .setServiceUuid(ParcelUuid(PULSE_OXIMETER_SERVICE_UUID))
+                .build(),
             // Filter for devices with Device Information Service (common in health devices)
             ScanFilter.Builder()
                 .setServiceUuid(ParcelUuid(DEVICE_INFORMATION_SERVICE))
@@ -254,6 +263,9 @@ class BleHealthScannerService : Service() {
                 .build(),
             ScanFilter.Builder()
                 .setDeviceName("FT95")
+                .build(),
+            ScanFilter.Builder()
+                .setDeviceName("OxySmart")
                 .build()
         )
         
@@ -325,6 +337,8 @@ class BleHealthScannerService : Service() {
                 lowerName.contains("omron") ||
                 lowerName.contains("blood") && lowerName.contains("pressure") ||
                 lowerName.contains("ft95") ||
+                lowerName.contains("oxysmart") ||
+                lowerName.contains("pulse") && lowerName.contains("ox") ||
                 lowerName.contains("beurer")) {
                 return true
             }
@@ -337,6 +351,7 @@ class BleHealthScannerService : Service() {
                 uuid == MI_SCALE_SERVICE_UUID || 
                 uuid == BLOOD_PRESSURE_SERVICE_UUID ||
                 uuid == HEALTH_THERMOMETER_SERVICE_UUID ||
+                uuid == PULSE_OXIMETER_SERVICE_UUID ||
                 uuid == DEVICE_INFORMATION_SERVICE
             }
         }
@@ -400,6 +415,9 @@ class BleHealthScannerService : Service() {
                         HEALTH_THERMOMETER_SERVICE_UUID -> {
                             handleHealthThermometerService(gatt, service)
                         }
+                        PULSE_OXIMETER_SERVICE_UUID -> {
+                            handlePulseOximeterService(gatt, service)
+                        }
                         DEVICE_INFORMATION_SERVICE -> {
                             // Read device information if needed
                         }
@@ -426,6 +444,9 @@ class BleHealthScannerService : Service() {
                 }
                 INTERMEDIATE_TEMPERATURE_UUID -> {
                     processTemperatureData(gatt.device.address, gatt.device.name, characteristic.value)
+                }
+                PULSE_OXIMETER_TX_UUID -> {
+                    processPulseOximeterData(gatt.device.address, gatt.device.name, characteristic.value)
                 }
             }
         }
@@ -744,6 +765,76 @@ class BleHealthScannerService : Service() {
         }
         
         return signedMantissa * Math.pow(10.0, signedExponent.toDouble())
+    }
+    
+    private fun handlePulseOximeterService(gatt: BluetoothGatt, service: BluetoothGattService) {
+        Log.i(TAG, "OXYSMART * Setting up Pulse Oximeter Service for device: ${gatt.device.address}")
+        
+        // Try to find the TX characteristic (device to phone data)
+        val txCharacteristic = service.getCharacteristic(PULSE_OXIMETER_TX_UUID)
+        if (txCharacteristic != null) {
+            try {
+                Log.d(TAG, "Found Pulse Oximeter TX characteristic, enabling notifications...")
+                // Enable notifications for pulse oximeter data
+                gatt.setCharacteristicNotification(txCharacteristic, true)
+                
+                // Set the notification descriptor
+                val descriptor = txCharacteristic.getDescriptor(CCCD_UUID)
+                descriptor?.let {
+                    it.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                    gatt.writeDescriptor(it)
+                    Log.d(TAG, "Pulse oximeter data notifications enabled")
+                }
+            } catch (e: SecurityException) {
+                Log.e(TAG, "Permission denied for pulse oximeter characteristic notification", e)
+            }
+        } else {
+            Log.w(TAG, "Pulse Oximeter TX characteristic not found")
+        }
+    }
+    
+    private fun processPulseOximeterData(deviceAddress: String, deviceName: String?, data: ByteArray) {
+        try {
+            Log.d(TAG, "OXYSMART * Processing pulse oximeter data from $deviceAddress (${data.size} bytes)")
+            
+            if (data.isEmpty()) {
+                Log.w(TAG, "Empty pulse oximeter data received")
+                return
+            }
+            
+            // Parse OxySmart data format based on Wellue protocol
+            val pulseOxReading = PulseOximetryReading.createFromBleData(
+                data, 
+                deviceAddress, 
+                deviceName ?: "OxySmart"
+            )
+            
+            if (pulseOxReading != null && pulseOxReading.isValidReading) {
+                Log.i(TAG, "OXYSMART * Pulse oximetry reading complete: ${pulseOxReading.toSummaryString()}")
+                
+                // Publish to MQTT
+                mqttPublisher.publishPulseOximetryReading("user@example.com", pulseOxReading)
+                
+                // Notify callback
+                scanCallback?.onHealthDataReceived(deviceAddress, pulseOxReading)
+                
+                // Log additional details
+                Log.d(TAG, "OXYSMART * PPG Data size: ${pulseOxReading.plethysmogramData.size} bytes")
+                Log.d(TAG, "OXYSMART * Signal quality: ${pulseOxReading.signalQuality}")
+                
+            } else {
+                Log.w(TAG, "OXYSMART * Invalid or corrupted pulse oximeter data received")
+                // Log raw data for debugging
+                val hexData = data.joinToString(" ") { "%02x".format(it) }
+                Log.d(TAG, "OXYSMART * Raw data: $hexData")
+            }
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "OXYSMART * Error processing pulse oximeter data", e)
+            // Log raw data for debugging
+            val hexData = data.joinToString(" ") { "%02x".format(it) }
+            Log.d(TAG, "OXYSMART * Raw data that caused error: $hexData")
+        }
     }
     
     private fun disconnectAllDevices() {
