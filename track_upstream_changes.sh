@@ -102,4 +102,10 @@ else
 fi
 echo ""
 
+echo "📡 External Dependencies to Monitor Manually:"
+echo "----------------------------------------------"
+echo "🫁 OxySmart Pulse Oximeter: https://github.com/tonyfu97/Pulse-Ox-BLE"
+echo "🌡️ Temperature Protocols: IEEE-11073 Health Informatics Standards"
+echo ""
+
 echo "Run this script regularly to stay in sync with upstream improvements!"
